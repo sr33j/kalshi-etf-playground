@@ -4,6 +4,8 @@ from KalshiClientsBaseV2 import ExchangeClient
 import time
 import re
 import pandas as pd
+import numpy as np
+import datetime as dt
 
 import os
 from dotenv import load_dotenv
@@ -19,7 +21,12 @@ MAX_DATA_PULL_DAYS = 30
 CURRENT_TIME = round(time.time())
 START_TIME = CURRENT_TIME - MAX_DATA_PULL_DAYS*24*60*60
 
-def get_price_series_for_ticker(ticker, yes=True):
+def get_return_series_for_ticker(ticker, yes=True):
+    ## check if we have the data in cache
+    if os.path.exists("cache/price_data/{}.csv".format(ticker)):
+        return_series = pd.read_csv("cache/price_data/{}.csv".format(ticker), index_col=0)
+        return return_series
+
     ## Pulls historical price series from Kalshi
     all_data = []
     market_history_params = {'ticker': ticker,
@@ -51,7 +58,16 @@ def get_price_series_for_ticker(ticker, yes=True):
     price_series = full_price_data[['date', 'midprice']].groupby('date').last()
     price_series = price_series.sort_index()
 
-    return price_series
+    date_range = pd.date_range(start=price_series.index.min(), end=price_series.index.max())
+    price_series = price_series.reindex(date_range)
+    price_series = price_series.fillna(method='ffill')
+
+    return_series = price_series.pct_change()
+
+    ## save to csv in cache/price_data
+    return_series.to_csv("cache/price_data/{}.csv".format(ticker))
+
+    return return_series
 
 def download_all_variable_names():
     all_data = []
@@ -97,12 +113,45 @@ def download_all_variable_names():
     full_market_data = full_market_data.merge(series_df, on='event_ticker', how='left')
     full_market_data.to_csv("cache/full_market_data.csv", index=False)
 
-def get_price_series_for_existing_index(index_ticker):
+def get_return_series_for_existing_index(index_ticker):
     ## just run evaluate_expression for that index's expression
     pass
 
-def get_price_series_for_series(series_ticker):
-    pass
+def get_return_series_for_series(series_ticker):
+    all_market_data = pd.read_csv("cache/full_market_data.csv")
+    series_data = all_market_data[all_market_data['series_ticker'] == series_ticker].drop_duplicates(subset=['event_ticker'])
+    if series_data.shape[0] == 0:
+        raise Exception("Series not found")
+    elif series_data.shape[0] == 1:
+        return get_return_series_for_event(series_data['event_ticker'].unique()[0])
+    else:
+        all_return_series = []
+        for event_ticker in series_data['event_ticker'].unique():
+            return_series = get_return_series_for_event(event_ticker)
+            return_series.name = event_ticker
+            all_return_series.append(return_series)
+        event_returns_df = pd.concat(all_return_series, axis=1)
+        event_returns_df = event_returns_df.fillna(0)
+
+        ## create a dataframe over time with a column for each event. 
+        ## the values will be if the event contract is opened during that day
+        contract_open = pd.DataFrame(0, index=event_returns_df.index, columns=event_returns_df.columns)
+        for event_ticker in contract_open.columns:
+            event_data = series_data[series_data['event_ticker'] == event_ticker]
+            open_date = pd.to_datetime(event_data['open_time'].unique()[0]).date()
+            close_date = pd.to_datetime(event_data['close_time'].unique()[0]).date()
+            while open_date < close_date:
+                contract_open.loc[open_date, event_ticker] = 1
+                open_date += dt.timedelta(days=1)
+
+        ## normalize each row in contract_open to sum to 1
+        contract_open = contract_open.div(contract_open.sum(axis=1), axis=0)
+
+        ## multiply each column in event_returns_df by the corresponding column in contract_open
+        ## then sum the columns to get the return series for the series
+        return_series = (event_returns_df * contract_open).sum(axis=1)
+
+        return return_series
 
 def extract_number_from_string(string):
   # Use a regular expression to search for a sequence of one or more digits
@@ -113,14 +162,40 @@ def extract_number_from_string(string):
     return float(match.group())
   else:
     # If no match is found, return None
-    return None
+    return 0
 
-def get_price_series_for_event(event_ticker):
+def get_return_series_for_event(event_ticker):
     all_market_data = pd.read_csv("cache/full_market_data.csv")
     event_data = all_market_data[all_market_data['event_ticker'] == event_ticker]
+    if event_data.shape[0] == 0:
+        raise Exception("Event not found")
+    elif event_data.shape[0] == 1:
+        return get_return_series_for_existing_index(event_data['ticker'].iloc[0])
+    else:
+        ## sort the tickers by the number at the end of the ticker
+        event_data['ticker_number'] = event_data['ticker'].apply(extract_number_from_string)
+        event_data = event_data.sort_values('ticker_number')
 
+        all_ticker_return_data = []
+        for ticker in event_data['ticker']:
+            return_series = get_return_series_for_ticker(ticker)
+            return_series.name = ticker
+            all_ticker_return_data.append(return_series)
 
-def get_price_series_for_instrument(instrument_name):
+        all_ticker_return_data = pd.concat(all_ticker_return_data, axis=1)
+        ## fill in missing values with the last value
+        all_ticker_return_df = all_ticker_return_data.fillna(0)
+
+        ## now I want to return a weighted sum of each tickers return series where the weights 
+        ## are linearly interporlated between -1 to 1, and then normalized such that the 
+        ## absolute value of the weights sum to 1
+        weights = np.linspace(-1, 1, all_ticker_return_data.shape[1])
+        weights = weights / np.abs(weights).sum()
+        weight_series = pd.Series(weights, index=all_ticker_return_data.columns)
+        weighted_return_series = all_ticker_return_data.dot(weight_series)
+        return weighted_return_series
+
+def get_return_series_for_instrument(instrument_name):
 
     all_market_data = pd.read_csv("cache/full_market_data.csv")
 
@@ -130,16 +205,13 @@ def get_price_series_for_instrument(instrument_name):
     series_tickers = list(all_market_data['series_ticker'].dropna().unique())
     
     if instrument_name in normal_tickers:
-        return get_price_series_for_existing_index(instrument_name)
+        return get_return_series_for_existing_index(instrument_name)
     elif instrument_name in event_tickers:
-        return get_price_series_for_event(instrument_name)
+        return get_return_series_for_event(instrument_name)
     elif instrument_name in series_tickers:
-        return get_price_series_for_series(instrument_name)
+        return get_return_series_for_series(instrument_name)
     else:
         raise Exception("Instrument not found")
-
-def clean_expression(expression):
-    pass
 
 def variable_name_generator():
     letters = 'abcdefghijklmnopqrstuvwxyz'
@@ -162,32 +234,30 @@ def evaluate_expression(expression):
     all_instruments.sort(key=len, reverse=True)
 
     ## get the values of all variables from the expression, make into a df and fill in missing values
-    all_price_data = []
+    all_return_data = []
     varname_generator = variable_name_generator()
     for instrument in all_instruments:
         if instrument in new_expression:
             var = next(varname_generator)
             new_expression = new_expression.replace(instrument, var)
-            price_series = get_price_series_for_instrument(instrument)
-            price_series.name = var
-            all_price_data.append(price_series)
+            return_series = get_return_series_for_instrument(instrument)
+            return_series.name = var
+            all_return_data.append(return_series)
 
     ## put then in a df into a dictionary of series representation .to_dict(orient='series')
-    instrument_prices = pd.concat(all_price_data, axis=1).fillna(method='ffill')
-    variable_dictionary = instrument_prices.to_dict(orient='series')
+    instrument_returns = pd.concat(all_return_data, axis=1).fillna(0)
+    variable_dictionary = instrument_returns.to_dict(orient='series')
 
     ## use eval() to evaluate the expression and add the dictionary as an argument
-    index_price_series = eval(new_expression, variable_dictionary)
-    return index_price_series
+    index_return_series = eval(new_expression, variable_dictionary)
+    return index_return_series
 
 
 def main():
-    # print(get_price_series_for_ticker('ACPI-22-B5.5'))
+    evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*INX")
+    # print(get_return_series_for_ticker('ACPI-22-B5.5'))
     # download_all_variable_names()
     # print(pd.read_csv("cache/full_market_data.csv").head())
-    generator = variable_name_generator()
-    for i in range(100):
-        print(next(generator)) 
 
 
 if __name__ == "__main__":
