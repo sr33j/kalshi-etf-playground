@@ -24,8 +24,11 @@ START_TIME = CURRENT_TIME - MAX_DATA_PULL_DAYS*24*60*60
 def get_return_series_for_ticker(ticker, yes=True):
     ## check if we have the data in cache
     if os.path.exists("cache/price_data/{}.csv".format(ticker)):
-        return_series = pd.read_csv("cache/price_data/{}.csv".format(ticker), index_col=0)
+        return_series = pd.read_csv("cache/price_data/{}.csv".format(ticker), index_col=0, parse_dates=True)
+        return_series = return_series.sort_index()[return_series.columns[0]]
         return return_series
+
+    print("downloading return series for {}".format(ticker))
 
     ## Pulls historical price series from Kalshi
     all_data = []
@@ -37,6 +40,8 @@ def get_return_series_for_ticker(ticker, yes=True):
                                     }
     market_history_response = exchange_client.get_market_history(**market_history_params)
     df = pd.DataFrame(market_history_response['history'])
+    if df.shape[0] == 0:
+        return pd.Series([])
     all_data.append(df)
     while df.shape[0] > 0 and df['ts'].min() > START_TIME and market_history_response['cursor'] is not None:
         market_history_params['cursor'] = market_history_response['cursor']
@@ -44,8 +49,8 @@ def get_return_series_for_ticker(ticker, yes=True):
         df = pd.DataFrame(market_history_response['history'])
         if df.shape[0] > 0:
             all_data.append(df)
-
     full_price_data = pd.concat(all_data)
+
     full_price_data = full_price_data.sort_values('ts')
     full_price_data['datetime'] = pd.to_datetime(full_price_data['ts'], unit='s')
     full_price_data['date'] = full_price_data['datetime'].dt.date
@@ -55,7 +60,7 @@ def get_return_series_for_ticker(ticker, yes=True):
     else:
         full_price_data['midprice'] = (full_price_data['no_bid'] + full_price_data['no_ask'])/2
     
-    price_series = full_price_data[['date', 'midprice']].groupby('date').last()
+    price_series = full_price_data[['date', 'midprice']].groupby('date')['midprice'].last()
     price_series = price_series.sort_index()
 
     date_range = pd.date_range(start=price_series.index.min(), end=price_series.index.max())
@@ -170,7 +175,7 @@ def get_return_series_for_event(event_ticker):
     if event_data.shape[0] == 0:
         raise Exception("Event not found")
     elif event_data.shape[0] == 1:
-        return get_return_series_for_existing_index(event_data['ticker'].iloc[0])
+        return get_return_series_for_ticker(event_data['ticker'].iloc[0])
     else:
         ## sort the tickers by the number at the end of the ticker
         event_data['ticker_number'] = event_data['ticker'].apply(extract_number_from_string)
@@ -205,13 +210,13 @@ def get_return_series_for_instrument(instrument_name):
     series_tickers = list(all_market_data['series_ticker'].dropna().unique())
     
     if instrument_name in normal_tickers:
-        return get_return_series_for_existing_index(instrument_name)
+        return get_return_series_for_ticker(instrument_name)
     elif instrument_name in event_tickers:
         return get_return_series_for_event(instrument_name)
     elif instrument_name in series_tickers:
         return get_return_series_for_series(instrument_name)
     else:
-        raise Exception("Instrument not found")
+        raise Exception("Instrument not found {}".format(instrument_name))
 
 def variable_name_generator():
     letters = 'abcdefghijklmnopqrstuvwxyz'
@@ -254,7 +259,9 @@ def evaluate_expression(expression):
 
 
 def main():
-    evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*INX")
+    series_value = evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*ACPI")
+    print(series_value)
+    series_value.to_csv("investigation.csv")
     # print(get_return_series_for_ticker('ACPI-22-B5.5'))
     # download_all_variable_names()
     # print(pd.read_csv("cache/full_market_data.csv").head())
