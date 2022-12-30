@@ -78,7 +78,7 @@ def get_return_series_for_ticker(ticker, yes=True):
 
     return return_series
 
-def download_all_variable_names():
+def download_all_kalshi_market_info():
     all_data = []
     market_params = {'limit':100,
                         'cursor':None, # passing in the cursor from the previous get_markets call
@@ -91,27 +91,33 @@ def download_all_variable_names():
 
     markets_response = exchange_client.get_markets(**market_params)
     df = pd.DataFrame(markets_response['markets'])
-    df = df[['ticker', 'event_ticker', 'open_time', 'close_time']]
+    df = df[['ticker', 'event_ticker', 'open_time', 'close_time', 'subtitle']]
     all_data.append(df)
     while df.shape[0] > 0 and pd.to_datetime(df['close_time']).min().timestamp() > START_TIME and markets_response['cursor'] is not None:
         market_params['cursor'] = markets_response['cursor']
         markets_response = exchange_client.get_markets(**market_params)
         df = pd.DataFrame(markets_response['markets'])
         if df.shape[0] > 0:
-            df = df[['ticker', 'event_ticker', 'open_time', 'close_time']]
+            df = df[['ticker', 'event_ticker', 'open_time', 'close_time', 'subtitle']]
             all_data.append(df)
 
     full_market_data = pd.concat(all_data)
 
     def get_series_info(event_ticker):
         event_params = {'event_ticker': event_ticker}
-        index = ['event_ticker','series_ticker']
+        index = ['event_ticker','series_ticker','event_title','series_title']
         try:
             event_response = exchange_client.get_event(**event_params)
             series_ticker = event_response['event']['series_ticker']
-            return pd.Series([event_ticker, series_ticker], index=index)
+            event_title = event_response['event']['title']
+            try:
+                series_response = exchange_client.get_series(series_ticker=series_ticker)
+                series_title = series_response['series']['title']
+                return pd.Series([event_ticker, series_ticker, event_title, series_title], index=index)
+            except:
+                return pd.Series([event_ticker, series_ticker, event_title, None], index=index)
         except:  
-            return pd.Series([event_ticker, None], index=index)
+            return pd.Series([event_ticker, None, None, None], index=index)
 
     series_data = []
     event_tickers = full_market_data['event_ticker'].dropna().unique()
@@ -279,12 +285,12 @@ def evaluate_expression(expression):
 
 def main():
     # series_value = evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*ACPI")
-    series_value = evaluate_expression("ACPI")
+    # series_value = evaluate_expression("ACPI")
     # print(series_value.dropna())
-    series_value.to_csv("investigation.csv")
+    # series_value.to_csv("investigation.csv")
     # print(get_return_series_for_ticker('ACPI-22-B5.5'))
-    # download_all_variable_names()
-    # print(pd.read_csv("cache/full_market_data.csv").head())
+    download_all_kalshi_market_info()
+    print(pd.read_csv("cache/full_market_data.csv").head())
 
 
 if __name__ == "__main__":
