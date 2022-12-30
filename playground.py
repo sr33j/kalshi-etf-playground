@@ -50,7 +50,7 @@ def home():
     # plot_data = "data:image/png;base64," + b64encode(output.getvalue()).decode()
     
     # Return the image as the response
-    return render_template('home.html', plot_labels=returns.index.tolist(), plot_values=prices.tolist())
+    return render_template('home.html', plot_labels=returns.index.astype(str).tolist(), plot_values=prices.tolist())
   else:
     # Render the home page template
     return render_template('home.html',plot_labels=[], plot_values=[])

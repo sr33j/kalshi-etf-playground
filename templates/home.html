@@ -9,6 +9,22 @@
         width: 50%;
         height: 50%;
       }
+      tbody {
+        height: 100%;
+        width: 100%;
+      }
+      form {
+        width: 100%;
+        height: 100%;
+      }
+      textarea {
+        width: 100%;
+        height: 100%;
+      }
+      table {
+        width: 90%;
+        height: 90%;
+      }
     </style>
   </head>
   <body>
@@ -48,12 +64,6 @@
     </table>
     <script>
       // // Get the plot data
-      // var plotData = document.getElementById('plot').src;
-      
-      // // If the plot data is not empty, display the plot
-      // if (plotData) {
-      //   document.getElementById('plot').style = 'width:100%; height:100%; object-fit:cover; display:block';
-      // }
       var ctx = document.getElementById('myChart').getContext('2d');
       var myChart = new Chart(ctx, {
         type: 'line',

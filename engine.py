@@ -272,7 +272,7 @@ def evaluate_expression(expression):
     index_return_series = eval(new_expression, variable_dictionary)
 
     ## remove leading and trailing zeros
-    index_return_series = remove_leading_trailing_zeros(index_return_series)
+    index_return_series = remove_leading_trailing_zeros(index_return_series.dropna())
 
     return index_return_series
 
