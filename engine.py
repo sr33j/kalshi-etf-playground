@@ -11,6 +11,9 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+import warnings
+warnings.simplefilter("ignore")
+
 prod_email = os.environ['KALSHI_PROD_EMAIL'] # change these to be your personal credentials
 prod_password = os.environ['KALSHI_PROD_PASSWORD'] # (for extra security, we recommend using a config file)
 prod_api_base = "https://trading-api.kalshi.com/trade-api/v2"
@@ -26,6 +29,7 @@ def get_return_series_for_ticker(ticker, yes=True):
     if os.path.exists("cache/price_data/{}.csv".format(ticker)):
         return_series = pd.read_csv("cache/price_data/{}.csv".format(ticker), index_col=0, parse_dates=True)
         return_series = return_series.sort_index()[return_series.columns[0]]
+        return_series.index  = return_series.index.map(lambda x: x.date())
         return return_series
 
     print("downloading return series for {}".format(ticker))
@@ -136,7 +140,7 @@ def get_return_series_for_series(series_ticker):
             return_series.name = event_ticker
             all_return_series.append(return_series)
         event_returns_df = pd.concat(all_return_series, axis=1)
-        event_returns_df = event_returns_df.fillna(0)
+        # event_returns_df = event_returns_df.fillna(0)
 
         ## create a dataframe over time with a column for each event. 
         ## the values will be if the event contract is opened during that day
@@ -189,7 +193,7 @@ def get_return_series_for_event(event_ticker):
 
         all_ticker_return_data = pd.concat(all_ticker_return_data, axis=1)
         ## fill in missing values with the last value
-        all_ticker_return_df = all_ticker_return_data.fillna(0)
+        # all_ticker_return_df = all_ticker_return_data.fillna(0)
 
         ## now I want to return a weighted sum of each tickers return series where the weights 
         ## are linearly interporlated between -1 to 1, and then normalized such that the 
@@ -226,7 +230,17 @@ def variable_name_generator():
         for c2 in letters:
             yield c1 + c2
 
-        
+def remove_leading_trailing_zeros(series):
+    # Remove leading zeros
+    while len(series) > 0 and series[0] == 0:
+        series = series[1:]
+    # Remove trailing zeros
+    while len(series) > 0 and series[-1] == 0:
+        series = series[:-1]
+    
+    return series
+
+
 def evaluate_expression(expression):
     ## TODO: validate the absolute sum of the ticker weights is 1
 
@@ -250,17 +264,23 @@ def evaluate_expression(expression):
             all_return_data.append(return_series)
 
     ## put then in a df into a dictionary of series representation .to_dict(orient='series')
-    instrument_returns = pd.concat(all_return_data, axis=1).fillna(0)
+    # instrument_returns = pd.concat(all_return_data, axis=1).fillna(0)
+    instrument_returns = pd.concat(all_return_data, axis=1)
     variable_dictionary = instrument_returns.to_dict(orient='series')
 
     ## use eval() to evaluate the expression and add the dictionary as an argument
     index_return_series = eval(new_expression, variable_dictionary)
+
+    ## remove leading and trailing zeros
+    index_return_series = remove_leading_trailing_zeros(index_return_series)
+
     return index_return_series
 
 
 def main():
-    series_value = evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*ACPI")
-    print(series_value)
+    # series_value = evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*ACPI")
+    series_value = evaluate_expression("ACPI")
+    # print(series_value.dropna())
     series_value.to_csv("investigation.csv")
     # print(get_return_series_for_ticker('ACPI-22-B5.5'))
     # download_all_variable_names()
