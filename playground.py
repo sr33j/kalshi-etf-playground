@@ -1,11 +1,10 @@
 from base64 import b64encode
 from engine import evaluate_expression
-import flask
 from flask import Flask, request, render_template
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from io import BytesIO
+import datetime as dt
+
 
 plt.switch_backend('Agg') 
 
@@ -23,34 +22,17 @@ def home():
     expression = request.form['expression']
     
     # Evaluate the expression and get the series of numbers
-    returns = evaluate_expression(expression)
+    returns = evaluate_expression(expression).sort_index()
     prices = 100 * (1 + returns).cumprod()
+    x_values = returns.index.astype(str).tolist()
+    y_values = prices.tolist()
 
-    # # Plot the numbers
-    # fig, ax = plt.subplots()
-    # plt.figure(facecolor='#797979')
-    # plt.figure(figsize=(2, 1), dpi=80)
-    # ax.set_facecolor('#333333')
+    starting_x_value = str(returns.index[0] - dt.timedelta(days=1))
+    starting_y_value = 100
+    x_values = [starting_x_value] + x_values
+    y_values = [starting_y_value] + y_values
 
-    # for tick in ax.xaxis.get_ticklabels():
-    #     tick.set_rotation(45)
-
-    # ax.set_title("Index Price Time Series Starting with $100")
-    # ax.set_xlabel("Date")
-    # ax.set_ylabel("Price (USD)")
-
-    # ax.plot(prices, color='green')
-
-
-    # # Render the plot as a png image
-    # output = BytesIO()
-    # FigureCanvasAgg(fig).print_png(output)
-    
-    # # Encode the image as a base64 string
-    # plot_data = "data:image/png;base64," + b64encode(output.getvalue()).decode()
-    
-    # Return the image as the response
-    return render_template('home.html', plot_labels=returns.index.astype(str).tolist(), plot_values=prices.tolist())
+    return render_template('home.html', plot_labels=x_values, plot_values=y_values)
   else:
     # Render the home page template
     return render_template('home.html',plot_labels=[], plot_values=[])
