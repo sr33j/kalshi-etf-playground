@@ -129,8 +129,11 @@ def download_all_kalshi_market_info():
     full_market_data.to_csv("cache/full_market_data.csv", index=False)
 
 def get_return_series_for_existing_index(index_ticker):
-    ## just run evaluate_expression for that index's expression
-    pass
+    etfs_created = pd.read_csv("cache/etfs_created.csv")
+    index_expression = etfs_created[etfs_created.ticker == index_ticker]['expression'].iloc[0]
+    print('expression: ', index_expression)
+    return_series = evaluate_expression(index_expression)
+    return return_series
 
 def get_return_series_for_series(series_ticker):
     all_market_data = pd.read_csv("cache/full_market_data.csv")
@@ -214,10 +217,13 @@ def get_return_series_for_instrument(instrument_name):
 
     all_market_data = pd.read_csv("cache/full_market_data.csv")
 
-    ## TODO: add existing indices
     normal_tickers = list(all_market_data['ticker'].dropna().unique())
     event_tickers = list(all_market_data['event_ticker'].dropna().unique()) 
     series_tickers = list(all_market_data['series_ticker'].dropna().unique())
+
+    etfs_created = pd.read_csv("cache/etfs_created.csv")
+    created_etf_tickers = list(etfs_created['ticker'].dropna().unique())
+    print("created_etf_tickers", created_etf_tickers)
     
     if instrument_name in normal_tickers:
         return get_return_series_for_ticker(instrument_name)
@@ -225,6 +231,9 @@ def get_return_series_for_instrument(instrument_name):
         return get_return_series_for_event(instrument_name)
     elif instrument_name in series_tickers:
         return get_return_series_for_series(instrument_name)
+    elif instrument_name in created_etf_tickers:
+        print("getting return series for existing index")
+        return get_return_series_for_existing_index(instrument_name)
     else:
         raise Exception("Instrument not found {}".format(instrument_name))
 
@@ -255,6 +264,11 @@ def evaluate_expression(expression):
     all_market_data = pd.read_csv("cache/full_market_data.csv")
 
     all_instruments = list(set(all_market_data['ticker'].dropna().tolist() + all_market_data['event_ticker'].dropna().tolist() + all_market_data['series_ticker'].dropna().tolist()))
+    
+    etfs_created = pd.read_csv("cache/etfs_created.csv")
+    created_etf_tickers = list(etfs_created['ticker'].dropna().unique())
+    all_instruments  = all_instruments + created_etf_tickers
+    
     # sort instruments by string length so that we replace the longer ones first
     all_instruments.sort(key=len, reverse=True)
 
@@ -284,13 +298,14 @@ def evaluate_expression(expression):
 
 
 def main():
-    # series_value = evaluate_expression(".5*CASESURGE-23FEB01-A300 -.5*ACPI")
+    # series_value = evaluate_expression("USDJPY-22DEC3010-132.375")
     # series_value = evaluate_expression("ACPI")
     # print(series_value.dropna())
     # series_value.to_csv("investigation.csv")
     # print(get_return_series_for_ticker('ACPI-22-B5.5'))
-    download_all_kalshi_market_info()
-    print(pd.read_csv("cache/full_market_data.csv").head())
+    # download_all_kalshi_market_info()
+    # print(pd.read_csv("cache/full_market_data.csv").head())
+    pass
 
 
 if __name__ == "__main__":

@@ -1,0 +1,143 @@
+<!-- home.html -->
+<html>
+  <head>
+    <title>Kalshi ETF Playground</title>
+    <link rel="icon" href="{{ url_for('static', filename='playground.png') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.3/dist/Chart.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/terminal.css@0.7.2/dist/terminal.min.css" />
+    <style>
+        .container {
+            display: grid;
+            grid-template-columns: [col1-start] 60% [col1-end col2-start] 1% [col2-end col3-start] 38% [col3-end col4-start] 1% [col4-end];
+            grid-template-rows:  [row1-start] 5% [row1-end row2-start] 45% [row2-end row3-start] 45% [row3-end row4-start] 5% [row4-end];
+            max-width: calc(100vw - 20px);
+
+        }
+        .header {
+            grid-column: col1-start / col1-end;
+            grid-row: row1-start / row1-end;
+        }
+        .playground {
+            grid-column: col1-start / col1-end;
+            /* grid-row: row1-start / row1-end; */
+            grid-row: row2-start / row2-end;
+            justify-self: stretch;
+        }
+        .asset-list {
+            /* grid-column: col2-start / col2-end; */
+            grid-column: col3-start / col3-end;
+            /* grid-row: row1-start / row2-end; */
+            grid-row: row2-start / row3-end;
+            max-height: calc(100vh - 20px); /* Set the maximum height to be the height of the viewport minus 20px */
+            overflow: scroll; /* Add a scroll bar if the contents are too long */
+            justify-self: stretch;
+        }
+        .asset-graph {
+            grid-column: col1-start / col1-end;
+            /* grid-row: row2-start / row2-end; */
+            grid-row: row3-start / row3-end;
+            height: 90%;
+            width: 90%;
+            padding: 10px
+            /* justify-self: stretch;
+            max-height: 50px; */
+        }
+        textarea {
+            height: 100%;
+        }
+        body {
+            background-color: #333333;
+            color: rgb(180, 255, 180);
+        }
+        .button-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        input[type="text"] {
+            background-color: black;
+            color: white;
+        }
+        table {
+            color: #bbbbbb;
+        }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+        <div class="header">
+            <strong>Kalshi ETF Playground</strong>
+        </div>              
+        <div class="playground">
+          <form method="post">
+            <textarea id="expression" name="expression" style="background-color:#222222; color: rgb(180, 255, 180)" >{{expression}}</textarea>
+            <br>
+            <div class="button-actions">
+              <button type="submit" name="evaluate-button" class="btn btn-default">Evaluate</button>
+              <button type="submit" name="upload-button" class="btn btn-default">Upload</button>
+            </div>
+           </form>
+          </div>
+          <div class="asset-list">
+            <input type="text" id="search" placeholder="Search...">
+            <table id="searchable-table" >
+              <tr>
+                <th>Ticker</th>
+                <th>User</th>
+                <th>Description</th>
+              </tr>
+              {% for item in table_data %}
+              <tr>
+                <td>{{ item.ticker }}</td>
+                <td>{{ item.user }}</td>
+                <td>{{ item.description }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+            </div>
+        <div class="asset-graph">
+          <!-- <img id="plot" src="{{ plot_data }}" style="display: none;"> -->
+          <canvas id="myChart" ></canvas>
+        </div>
+    </div>
+    <script>
+      // // Get the plot data
+      var ctx = document.getElementById('myChart').getContext('2d');
+      var myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          // labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July'],
+          labels: {{plot_labels|tojson|safe}},
+          datasets: [{
+            label: 'Index Value',
+            // data: [12, 19, 3, 5, 2, 3, 20],
+            data: {{plot_values|tojson|safe}},
+            backgroundColor: 'rgba(20, 180, 20, 0.2)',
+            borderColor: 'rgba(20, 180, 20, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: {
+            yAxes: [{
+              ticks: {
+                beginAtZero: true
+              }
+            }]
+          }
+        }
+      });
+
+      $(document).ready(function() {
+        $("#search").on("keyup", function() {
+          var value = $(this).val().toLowerCase();
+          $("#searchable-table tr").filter(function() {
+            $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+          });
+        });
+      });
+
+    </script>
+  </body>
+</html>
